@@ -162,8 +162,8 @@ class Board
 
       while square? and ((coord.x + ',' + coord.y) not of visited) and (dir = square.toCompleteNot inverse[dir])?
         damage += 1
-        coord.x += dirs[dir].x; coord.y += dirs[dir].y
         visited[(coord.x + ',' + coord.y)] = true
+        coord.x += dirs[dir].x; coord.y += dirs[dir].y
         square = @squares[coord.x]?[coord.y]
 
     return damage
@@ -192,8 +192,45 @@ class Board
               bestDamage = damage
       return bestMove
 
+###
+WIDTH = HEIGHT = 4
+
 # Instantiate our `Board` model to keep track
 # of things
+board = new Board WIDTH, HEIGHT
+
+for move in [
+      '0 0 n'
+      '0 0 e'
+      '0 1 e'
+      '0 1 s'
+      '1 0 n'
+      '2 0 n'
+      '3 0 n'
+      '2 0 s'
+      '3 0 s'
+      '1 1 s'
+      '2 1 s'
+      '3 1 s'
+      '2 2 s'
+      '2 3 s'
+      '1 2 s'
+      '1 3 e'
+      '2 3 e'
+      '0 2 w'
+      '0 3 w'
+      '0 3 s'
+      '3 3 e'
+      '3 2 e'
+      '0 0 s'
+      '0 0 w'
+      '0 1 w'
+    ]
+  board.place Move.fromString move
+
+console.log board.getRandomMove()
+###
+
 board = new Board WIDTH, HEIGHT
 
 # ## Game loop
