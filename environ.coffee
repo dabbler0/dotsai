@@ -264,18 +264,25 @@ playGame = (a, b, board) ->
       lastMoves.push move
 
       # Print the current rendered board to the tty.
-      console.log '\u001B[2J' + board.render()
-      console.log ('RED ' + board.scores[0]).red + '\t' + ('BLUE ' + board.scores[1]).blue
-      #console.log '\u001B[0;0f'
+      if RATE > 0
+        console.log '\u001B[2J' + board.render()
+        console.log ('RED ' + board.scores[0]).red + '\t' + ('BLUE ' + board.scores[1]).blue
+        #console.log '\u001B[0;0f'
 
       # If the game is over (i.e. the board is full),
       # gracefully kill the players and exit.
       if board.done
+        if RATE is 0
+          console.log board.render()
+          console.log ('RED ' + board.scores[0]).red + '\t' + ('BLUE ' + board.scores[1]).blue
         player.kill() for player in players
 
       # Otherwise, advance the animation tick.
       else
-        setTimeout doMove, RATE
+        if RATE > 0
+          setTimeout doMove, RATE
+        else
+          doMove()
   )()
 
 playGame process.argv[2], process.argv[3], new Board WIDTH, HEIGHT
