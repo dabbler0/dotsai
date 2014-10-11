@@ -242,4 +242,4 @@ playGame = (a, b, board) ->
         setTimeout doMove, RATE
   )()
 
-playGame 'coffee naive.coffee', 'coffee random.coffee', new Board WIDTH, HEIGHT
+playGame process.argv[2], process.argv[3], new Board WIDTH, HEIGHT
