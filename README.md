@@ -3,7 +3,7 @@ DOTS AI
 
 Running the Contest Environment
 -------------------------------
-You will need [nodejs](nodejs.org). Then install coffeescript:
+You will need [nodejs](http://nodejs.org). Then install coffeescript:
 ```
 npm install -g coffee-script
 ```
