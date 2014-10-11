@@ -1,3 +1,8 @@
+###
+A naive AI for the Dots AI environment.
+Copyright (c) 2014 Anthony Bau.
+MIT License.
+###
 kbd = require 'kbd'
 
 # Read in the dimensions of the board.

@@ -1,3 +1,8 @@
+###
+The Dots contest environment.
+Copyright (c) Anthony Bau 2014.
+MIT License.
+###
 colors = require 'colors'
 child_process = require 'child_process'
 
