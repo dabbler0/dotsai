@@ -103,10 +103,22 @@ class Player
   # We feed moves to the players in the format: `x1 y1 d1|x2 y2 d2|x3 y3 d3` etc.
   # It is possible to feed players an empty string (ended with a newline) if they
   # are the starting player or are moving twice in a row.
-  feed: (moves, cb) ->
+  feed: (board, moves, cb) ->
     if @human
-      @iface.question '>', (data) ->
-        cb Move.fromString data
+      @iface.question '>', fn = (data) =>
+        if data.match(/\d* \d* (n|s|e|w)/)?
+          move = Move.fromString data
+          if 0 <= move.x < WIDTH and 0 <= move.y < HEIGHT
+            if board.squares[move.x][move.y][move.d] < 0
+              cb move
+              return
+            else
+              console.log 'Illegal move (already taken).'
+          else
+            console.log 'Coordinate out of bounds.'
+        else
+          console.log 'Invalid syntax.'
+        @iface.question '>', fn
 
     else
       @process.stdin.write (move.toString() for move in moves).join('|') + '\n'
@@ -239,7 +251,7 @@ playGame = (a, b, board) ->
     fodder = (if board.turn is lastTurn then [] else lastMoves)
 
     # Ask the player for a move
-    players[board.turn].feed fodder, (move) ->
+    players[board.turn].feed board, fodder, (move) ->
       # If the turn has just switched, clear the `lastMove` history
       if lastTurn isnt board.turn
         lastTurn = board.turn; lastMoves = []
