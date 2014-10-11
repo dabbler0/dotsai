@@ -23,7 +23,7 @@ The default board size is 10x10, so this will run a 10x10 game between `naive.co
 
 Making a Contestant
 -------------------
-See `naive.coffee` for an example. You will recieve first a single line with the dimensions of the board, first width and then height:
+See `naive.coffee` or `random.coffee` for examples. You will recieve first a single line with the dimensions of the board, first width and then height:
 ```
 5 10
 ```
