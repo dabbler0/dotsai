@@ -4,6 +4,7 @@ Copyright (c) 2014 Anthony Bau.
 MIT License.
 ###
 kbd = require 'kbd'
+fs = require 'fs'
 
 # Read in the dimensions of the board.
 [WIDTH, HEIGHT] = (Number(d) for d in kbd.getLineSync().trim().split ' ')
@@ -41,6 +42,15 @@ class Square
     remnant = DIRS.filter((d) => @[d] < 0)
     if remnant.length is 1 then return remnant[0]
     else null
+
+  toCompleteNot: (exclude) ->
+    remnant = DIRS.filter((d) => (@[d] < 0) and (d isnt exclude))
+    if remnant.length is 1 then return remnant[0]
+    else null
+
+  remaining: -> DIRS.filter((d) => @[d] < 0)
+
+  remnant: -> DIRS.filter((d) => @[d] < 0).length
 
 # Convenience dictionaries for inverting directions
 # or moving in them
@@ -144,16 +154,43 @@ class Board
       for square, y in col
         fn square, {x: x, y: y}
 
+  computeDamage: (originalCoord) ->
+    damage = 1; visited = {}
+    for dir in @squares[originalCoord.x][originalCoord.y].remaining()
+      coord = {x: originalCoord.x + dirs[dir].x, y: originalCoord.y + dirs[dir].y}
+      square = @squares[coord.x]?[coord.y]
+
+      while square? and ((coord.x + ',' + coord.y) not of visited) and (dir = square.toCompleteNot inverse[dir])?
+        damage += 1
+        coord.x += dirs[dir].x; coord.y += dirs[dir].y
+        visited[(coord.x + ',' + coord.y)] = true
+        square = @squares[coord.x]?[coord.y]
+
+    return damage
+
   # `getRandomMove` gets a random legal `Move` object for
   # this board. Just keeps generating random moves until
   # one of them is legal.
   getRandomMove: ->
     moves = []
-    @eachSquare (square, coord) ->
-      for dir in DIRS
-        if square[dir] < 0
-          moves.push new Move coord.x, coord.y, dir
-    return rand moves
+    @eachSquare (square, coord) =>
+      unless square.remnant() is 2
+        for dir in DIRS
+          m = dirs[dir]
+          if square[dir] < 0 and @squares[coord.x + m.x]?[coord.y + m.y]?.remnant?() isnt 2
+            moves.push new Move coord.x, coord.y, dir
+
+    if moves.length > 0
+      return rand moves
+    else
+      bestDamage = Infinity; bestMove = null
+      @eachSquare (square, coord) =>
+        for dir in DIRS
+          if square[dir] < 0
+            if (damage = @computeDamage(coord)) < bestDamage
+              bestMove = new Move coord.x, coord.y, dir
+              bestDamage = damage
+      return bestMove
 
 # Instantiate our `Board` model to keep track
 # of things

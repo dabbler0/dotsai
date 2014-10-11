@@ -42,6 +42,8 @@ class Square
     if remnant.length is 1 then return remnant[0]
     else null
 
+  remnant: -> DIRS.filter((d) => @[d] < 0).length
+
 # Convenience dictionaries for inverting directions
 # or moving in them
 dirs = {
@@ -149,10 +151,18 @@ class Board
   # one of them is legal.
   getRandomMove: ->
     moves = []
-    @eachSquare (square, coord) ->
-      for dir in DIRS
-        if square[dir] < 0
-          moves.push new Move coord.x, coord.y, dir
+    @eachSquare (square, coord) =>
+      unless square.remnant() is 2
+        for dir in DIRS
+          m = dirs[dir]
+          if square[dir] < 0 and @squares[coord.x + m.x]?[coord.y + m.y]?.remnant?() isnt 2
+            moves.push new Move coord.x, coord.y, dir
+
+    if moves.length is 0
+      @eachSquare (square, coord) ->
+        for dir in DIRS
+          if square[dir] < 0
+            moves.push new Move coord.x, coord.y, dir
     return rand moves
 
 # Instantiate our `Board` model to keep track

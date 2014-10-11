@@ -5,6 +5,7 @@ MIT License.
 ###
 colors = require 'colors'
 child_process = require 'child_process'
+readline = require 'readline'
 
 # Process command line arguments:
 # `-r` or `--rate` for frames-per-second frame rate
@@ -73,16 +74,26 @@ class Player
   # Upon construction we must feed the child the dimensions
   # of the board
   constructor: (@script) ->
-    @process = child_process.exec @script
-    @process.stdin.write [WIDTH, HEIGHT].join(' ') + '\n'
-    @process.on 'exit', (code, string) =>
-      unless @killed
-        throw new Error "Player foreits with exit code #{code}"
-    @killed = false
+    if @script is 'HUMAN'
+      @human = true
+      @iface = readline.createInterface {
+        input: process.stdin
+        output: process.stdout
+      }
+    else
+      @human = false
+      @process = child_process.exec @script
+      @process.stdin.write [WIDTH, HEIGHT].join(' ') + '\n'
+      @process.stderr.pipe process.stderr
+      @process.on 'exit', (code, string) =>
+        unless @killed
+          throw new Error "Player foreits with exit code #{code}"
+      @killed = false
 
   kill: ->
-    @killed = true
-    @process.kill()
+    unless @human
+      @killed = true
+      @process.kill()
 
   # `feed` takes an array of moves (the moves that this player has not performed
   # and have been performed since this player has last moved) and an async callback.
@@ -91,15 +102,20 @@ class Player
   # It is possible to feed players an empty string (ended with a newline) if they
   # are the starting player or are moving twice in a row.
   feed: (moves, cb) ->
-    @process.stdin.write (move.toString() for move in moves).join('|') + '\n'
+    if @human
+      @iface.question '>', (data) ->
+        cb Move.fromString data
 
-    str = ''
-    @process.stdout.once 'data', fn = (data) ->
-      str += data.toString()
-      if str[str.length - 1] is '\n'
-        cb Move.fromString str
-      else
-        @process.stdout.once 'data', fn
+    else
+      @process.stdin.write (move.toString() for move in moves).join('|') + '\n'
+
+      str = ''
+      @process.stdout.once 'data', fn = (data) ->
+        str += data.toString()
+        if str[str.length - 1] is '\n'
+          cb Move.fromString str
+        else
+          @process.stdout.once 'data', fn
 
 # ## Board
 # Class representing the game state, with methods for taking turns.
@@ -236,6 +252,7 @@ playGame = (a, b, board) ->
       # Print the current rendered board to the tty.
       console.log '\u001B[2J' + board.render()
       console.log ('RED ' + board.scores[0]).red + '\t' + ('BLUE ' + board.scores[1]).blue
+      #console.log '\u001B[0;0f'
 
       # If the game is over (i.e. the board is full),
       # gracefully kill the players and exit.
