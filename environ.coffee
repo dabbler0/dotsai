@@ -91,7 +91,9 @@ class Player
       @killed = false
 
   kill: ->
-    unless @human
+    if @human
+      @iface.close()
+    else
       @killed = true
       @process.kill()
 
