@@ -1,6 +1,6 @@
 ###
 The Dots contest environment.
-Copyright (c) Anthony Bau 2014.
+Copyright (c) 2014 Anthony Bau.
 MIT License.
 ###
 colors = require 'colors'
