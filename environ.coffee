@@ -124,7 +124,7 @@ class Player
       @process.stdin.write (move.toString() for move in moves).join('|') + '\n'
 
       str = ''
-      @process.stdout.once 'data', fn = (data) ->
+      @process.stdout.once 'data', fn = (data) =>
         str += data.toString()
         if str[str.length - 1] is '\n'
           cb Move.fromString str
@@ -135,7 +135,7 @@ class Player
 # Class representing the game state, with methods for taking turns.
 #
 # Edges are represented redundantly as sides of squares.
-class Board
+exports.Board = class Board
   constructor: (@w, @h) ->
     @squares = ((new Square() for [0...@h]) for [0...@w]) # Array of all the `Square`s on the board
     @scores = [0, 0] # Player scores
@@ -285,4 +285,41 @@ playGame = (a, b, board) ->
           doMove()
   )()
 
-playGame process.argv[2], process.argv[3], new Board WIDTH, HEIGHT
+if not module.parent
+  playGame process.argv[2], process.argv[3], new Board WIDTH, HEIGHT
+
+exports.play = (a, b, board, cb) ->
+  players = [new Player(a), new Player(b)]
+  lastMoves = []; lastTurn = 0
+
+  # Set up a js "animation" for the advancing game
+  (doMove = ->
+    # Feed the `lastMove` history unless this player has just gone,
+    # in which case feed them nothing, since they already
+    # know everything
+    fodder = (if board.turn is lastTurn then [] else lastMoves)
+
+    # Ask the player for a move
+    players[board.turn].feed board, fodder, (move) ->
+      # If the turn has just switched, clear the `lastMove` history
+      if lastTurn isnt board.turn
+        lastTurn = board.turn; lastMoves = []
+
+      # Perform the move the player has given us
+      board.place move
+
+      # Add the move to the history, kept to feed
+      # to the opposing player when it is their turn
+      lastMoves.push move
+
+      # If the game is over (i.e. the board is full),
+      # gracefully kill the players and exit.
+      if board.done
+        player.kill() for player in players
+        cb board.scores
+
+      # Otherwise, advance the animation tick.
+      else
+        doMove()
+  )()
+
