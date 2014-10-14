@@ -293,36 +293,15 @@ class Board
     for move in possibleMoves
       states.push {move: move, board: @getStepWithMove(move)}
 
+    bestEval = 0; bestMove = null
     for state in states
-      state.evaluation = state.board.evaluate state.board.turn
-
-    while states.length > 0
-      newStates = []
-      for state in states.sort((a, b) -> b.evaluation - a.evaluation)[...Math.min(20, Math.floor(states.length / 2))]
-        if state.board.possibleMoves().length is 0
-          finalStates.push state
-        else
-          for newState in state.board.getNextStates()
-            alreadyInside = false
-            for test in newStates when test.board.equal newState
-              alreadyInside = true
-            unless alreadyInside
-              newStates.push {move: state.move, board: newState, evaluation: newState.evaluate(0 + 0 * newState.turn)}
-
-      states = newStates
-
-    bestEval = 0; bestState = null; bestMove = @getRandomMove()
-    for state, i in finalStates
-      if (ev = state.board.evaluate(0)) > bestEval
-        bestEval = ev
+      for [1..3]
+        evaluation += state.board.evaluate state.board.turn
+      if evaluation > bestEval
         bestMove = state.move
-        bestState = state.board
-
-    if bestState?
-      console.warn 'BEST STATE:\n' + bestState.render()
-      console.warn 'EVAL FINAL:\n' + bestState.evaluate(0, true)
 
     return bestMove
+
   render: ->
     strs = ('' for [0..2 * @h])
     # Go through the squares, and print characters
