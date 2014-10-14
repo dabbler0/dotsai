@@ -265,7 +265,8 @@ playGame = (a, b, board) ->
 
       # Print the current rendered board to the tty.
       if RATE > 0
-        console.log '\u001B[2J' + board.render()
+        #console.log '\u001B[2J'
+        console.log board.render()
         console.log ('RED ' + board.scores[0]).red + '\t' + ('BLUE ' + board.scores[1]).blue
         #console.log '\u001B[0;0f'
 
