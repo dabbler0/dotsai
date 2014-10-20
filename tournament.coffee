@@ -22,14 +22,17 @@ format = (a, b) ->
   return topStr + '\n' + bottomStr
 
 playGame = ->
-  a = scripts[aIndex = Math.floor Math.random() * scripts.length]
-  b = scripts[bIndex = Math.floor Math.random() * scripts.length]
-  environ.play a, b, new environ.Board(10, 10), (results) ->
+  while a is b
+    a = scripts[aIndex = Math.floor Math.random() * scripts.length]
+    b = scripts[bIndex = Math.floor Math.random() * scripts.length]
+  #a = scripts[aIndex = 0]
+  #b = scripts[bIndex = 1]
+  environ.play a, b, new environ.Board(6, 6), (results) ->
     games += 1
     timesPlayed[aIndex] += 1
     timesPlayed[bIndex] += 1
-    scores[aIndex] += results[0]
-    scores[bIndex] += results[1]
+    scores[aIndex] += if results[0] > results[1] then 1 else 0
+    scores[bIndex] += if results[1] > results[0] then 1 else 0
 
     console.log ''
     console.log a + ' VERSUS ' + b

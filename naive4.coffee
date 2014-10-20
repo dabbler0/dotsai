@@ -4,7 +4,12 @@ Copyright (c) 2014 Anthony Bau.
 MIT License.
 ###
 kbd = require 'kbd'
+colors = require 'colors'
 fs = require 'fs'
+
+MAX_NUM_EVALS = 5
+MAX_EXAMINATIONS = 40
+PLAYER_NUM = 0
 
 # Read in the dimensions of the board.
 [WIDTH, HEIGHT] = (Number(d) for d in kbd.getLineSync().trim().split ' ')
@@ -51,6 +56,16 @@ class Square
   remaining: -> DIRS.filter((d) => @[d] < 0)
 
   remnant: -> DIRS.filter((d) => @[d] < 0).length
+  equal: (other) ->
+    (@n < 0) is (other.n < 0) and
+    (@s < 0) is (other.s < 0) and
+    (@e < 0) is (other.e < 0) and
+    (@w < 0) is (other.w < 0)
+
+  clone: ->
+    clone = new Square()
+    clone[p] = @[p] for p in ['n', 's', 'e', 'w', 'complete']
+    return clone
 
 # Convenience dictionaries for inverting directions
 # or moving in them
@@ -93,14 +108,20 @@ class Board
     @scores = [0, 0] # Player scores
     @turn = 0 # Whose turn; an index in the @scores array
     @done = false # Hacky field to prevent more moves after the game is over
+    @remainingMoves = @w * @h * 2 + @w + @h
+    @threeSquares = []
 
   place: (move) ->
+    unless move? and move.x? and move.y? and move.d?
+      console.warn move
     # Extract x, y, and d from the move
     {x, y, d} = move
 
     # If the move is illegal, say so
     if @squares[x][y][d] >= 0
       throw new Error "Player #{@turn} forfeits; illegal move at #{x} #{y} #{d}"
+
+    @remainingMoves--
 
     # Otherwise, place the edge, recording
     # the player who placed it
@@ -125,11 +146,17 @@ class Board
       @scores[@turn]++
       @squares[x][y].complete = @turn
       complete = true
+    else if @squares[x][y].toComplete()?
+      @threeSquares.push {x: x, y: y}
 
     if @squares[x + dir.x]?[y + dir.y]?.testComplete?() ? false
       @scores[@turn]++
       @squares[x + dir.x][y + dir.y].complete = @turn
       complete = true
+    else if @squares[x + dir.x]?[y + dir.y]?.toComplete()? ? false
+      @threeSquares.push {x: x + dir.x, y: y + dir.y}
+
+    @threeSquares = @threeSquares.filter (coord) => @squares[coord.x][coord.y].complete < 0
 
     # Test to see if we are done
     @done = true
@@ -150,9 +177,12 @@ class Board
   # over all squares. Passes their coordinates, along with the
   # square object itself, to the callback `fn`.
   eachSquare: (fn) ->
+    shouldBreak = false
     for col, x in @squares
       for square, y in col
-        fn square, {x: x, y: y}
+        shouldCont = fn square, {x: x, y: y}
+        unless shouldCont then break
+      unless shouldCont then break
 
   computeDamage: (originalCoord) ->
     damage = 1; visited = {}
@@ -168,10 +198,26 @@ class Board
 
     return damage
 
-  # `getRandomMove` gets a random legal `Move` object for
-  # this board. Just keeps generating random moves until
-  # one of them is legal.
-  getRandomMove: ->
+  clone: ->
+    clone = new Board @w, @h
+    @eachSquare (square, coord) =>
+      clone.squares[coord.x][coord.y] = square.clone()
+      return true
+
+    clone.remainingMoves = @remainingMoves
+    clone.turn = @turn
+    clone.scores[0] = @scores[0]
+    clone.scores[1] = @scores[1]
+    clone.threeSquares = (coord for coord in @threeSquares)
+
+    return clone
+
+  getStepWithMove: (move) ->
+    clone = @clone()
+    clone.place move
+    return clone
+
+  possibleMoves: ->
     moves = []
     @eachSquare (square, coord) =>
       unless square.remnant() is 2
@@ -179,93 +225,138 @@ class Board
           m = dirs[dir]
           if square[dir] < 0 and @squares[coord.x + m.x]?[coord.y + m.y]?.remnant?() isnt 2
             moves.push new Move coord.x, coord.y, dir
+      return true
+    moves = moves.sort((a, b) -> Math.random() - 0.5)[0...MAX_EXAMINATIONS]
+    return moves
+
+  getNextStates: ->
+    states = []
+
+    for move in @possibleMoves()
+      states.push @getStepWithMove move
+
+    return states
+
+  evaluate: (player, debug = false) ->
+    board = @clone()
+
+    until board.remainingMoves is 0
+      board.place board.getRandomMove()
+
+    return if (board.scores[player]) > (@w * @h / 2) then 1 else 0
+
+  getBestTwoSquare: ->
+    # Third, reduce damage as much as possible.
+    bestDamage = Infinity; bestMove = null
+    @eachSquare (square, coord) =>
+      if square.remnant() is 2 and (damage = @computeDamage(coord)) < bestDamage
+        bestMove = new Move coord.x, coord.y, square.remaining()[0]
+        bestDamage = damage
+      return true
+    return bestMove
+
+  # `getRandomMove` gets a random legal `Move` object for
+  # this board. Just keeps generating random moves until
+  # one of them is legal.
+  getRandomMove: ->
+    # First, check to see if there are any uncompleted three-squares
+    madeMove = false; move = null
+
+    if @threeSquares.length > 0
+      c = @threeSquares.shift()
+      return new Move c.x, c.y, @squares[c.x][c.y].toComplete()
+
+    # Second, check to see if there are any places we can put something
+    # without making a three-square.
+    moves = []
+    @eachSquare (square, coord) =>
+      unless square.remnant() is 2
+        for dir in DIRS
+          m = dirs[dir]
+          if square[dir] < 0 and @squares[coord.x + m.x]?[coord.y + m.y]?.remnant?() isnt 2
+            moves.push new Move coord.x, coord.y, dir
+      return true
 
     if moves.length > 0
       return rand moves
-    else
-      bestDamage = Infinity; bestMove = null
-      @eachSquare (square, coord) =>
+
+    return @getBestTwoSquare()
+
+  equal: (other) ->
+    result = true
+    result and= @w is other.w and @h is other.h
+
+    @eachSquare (square, coord) =>
+      return result and= square.equal other.squares[coord.x][coord.y]
+
+    return result
+
+  impossibleMoves: ->
+    moves = []
+    @eachSquare (square, coord) =>
+      if square.remnant() is 2
         for dir in DIRS
           if square[dir] < 0
-            if (damage = @computeDamage(coord)) < bestDamage
-              bestMove = new Move coord.x, coord.y, dir
-              bestDamage = damage
-      return bestMove
+            moves.push new Move coord.x, coord.y, dir
+      return true
+    return moves
 
-###
-WIDTH = HEIGHT = 4
+  getMetaRandomMove: (depth) ->
+    if @possibleMoves().length is 0 and @evaluate(PLAYER_NUM) is 0
+      return @getBestTwoSquare()
+    else
+      return @getRandomMove()
 
-# Instantiate our `Board` model to keep track
-# of things
-board = new Board WIDTH, HEIGHT
+  render: ->
+    strs = ('' for [0..2 * @h])
+    # Go through the squares, and print characters
+    # for only the northern and western edges of each of them (to avoid
+    # redundant printing).
+    for col, x in @squares
+      for square, y in col
+        # Northern edge, and northwestern corner "dot"
+        strs[2 * y] += '*' + (if square.n >= 0 then horizChars[square.n] else ' ')
 
-for move in [
-      '0 0 n'
-      '0 0 e'
-      '0 1 e'
-      '0 1 s'
-      '1 0 n'
-      '2 0 n'
-      '3 0 n'
-      '2 0 s'
-      '3 0 s'
-      '1 1 s'
-      '2 1 s'
-      '3 1 s'
-      '2 2 s'
-      '2 3 s'
-      '1 2 s'
-      '1 3 e'
-      '2 3 e'
-      '0 2 w'
-      '0 3 w'
-      '0 3 s'
-      '3 3 e'
-      '3 2 e'
-      '0 0 s'
-      '0 0 w'
-      '0 1 w'
-    ]
-  board.place Move.fromString move
+        # Western edge, and middle fill symbol, if the square has been completed
+        strs[2 * y + 1] += (if square.w >= 0 then vertChars[square.w] else ' ') +
+            (if square.complete >= 0 then fillChars[square.complete] else ' ')
 
-console.log board.getRandomMove()
-###
+        # Also add the eastern edge and northestern corner "dot" if we are the rightmost square,
+        # since nobody else is going to print that edge for us.
+        if y is col.length - 1
+          strs[2 * y + 2] += '*' + (if square.s >= 0 then horizChars[square.s] else ' ')
 
-board = new Board WIDTH, HEIGHT
-logStr = ''
+    # Also add the southern edge of all the southernmost squares,
+    # since those are not covered by any other squares.
+    for square, y in @squares[@squares.length - 1]
+      strs[2 * y] += '*' # Also add the southwestern corner
+      strs[2 * y + 1] += (if square.e >= 0 then vertChars[square.e] else ' ')
 
-# ## Game loop
+    # One dot is still left out -- the southeastern corner of the southeasternmost square. Add it here.
+    return strs.join('\n') + '*' + "\n(It is turn #{@turn})"
+
+# Convenience color arrays, used above in `render`.
+horizChars = ['-'.red, '-'.blue]
+vertChars = ['|'.red, '|'.blue]
+fillChars = ['#'.red, '#'.blue]
+
+gameBoard = new Board WIDTH, HEIGHT
+
+decidedPlayer = false
+
 while true
   # Read in the information the contest environment gives us and
   # apply it to the `Board` model.
-  moves = (Move.fromString(str) for str in (gottenString = kbd.getLineSync()).trim().split('|') when str.length > 1)
+  moves = (Move.fromString(str) for str in kbd.getLineSync().trim().split('|') when str.length > 1)
+
+  unless decidedPlayer
+    if moves.length is 0 then PLAYER_NUM = 0
+    else PLAYER_NUM = 1
+    decidedPlayer = true
+
   for move in moves
-    board.place move
+    gameBoard.place move
 
-  logStr += gottenString + '\n'
-  fs.writeFileSync 'debug.out', logStr
+  console.log (move = gameBoard.getMetaRandomMove()).toString()
 
-  # Now decide on our move.
-  madeMove = false
-
-  # First see if there is a three-side square
-  # we can fill; we will chose the first one
-  # we see, if there is any.
-  board.eachSquare (square, coord) ->
-    unless madeMove
-      remnant = square.toComplete()
-      if remnant?
-        move = new Move coord.x, coord.y, remnant
-        madeMove = true
-
-  # Otherwise, we will choose a random legal
-  # move.
-  unless madeMove
-    move = board.getRandomMove()
-
-  # Output the move on which we've decided
-  console.log move.toString()
-
-  # Update our `Board` model to reflect
-  # our own move as well.
-  board.place move
+  gameBoard.place move

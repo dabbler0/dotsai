@@ -7,6 +7,10 @@ kbd = require 'kbd'
 colors = require 'colors'
 fs = require 'fs'
 
+MAX_NUM_EVALS = 5
+MAX_EXAMINATIONS = 40
+PLAYER_NUM = 0
+
 # Read in the dimensions of the board.
 [WIDTH, HEIGHT] = (Number(d) for d in kbd.getLineSync().trim().split ' ')
 
@@ -105,8 +109,11 @@ class Board
     @turn = 0 # Whose turn; an index in the @scores array
     @done = false # Hacky field to prevent more moves after the game is over
     @remainingMoves = @w * @h * 2 + @w + @h
+    @threeSquares = []
 
   place: (move) ->
+    unless move? and move.x? and move.y? and move.d?
+      console.warn move
     # Extract x, y, and d from the move
     {x, y, d} = move
 
@@ -139,11 +146,17 @@ class Board
       @scores[@turn]++
       @squares[x][y].complete = @turn
       complete = true
+    else if @squares[x][y].toComplete()?
+      @threeSquares.push {x: x, y: y}
 
     if @squares[x + dir.x]?[y + dir.y]?.testComplete?() ? false
       @scores[@turn]++
       @squares[x + dir.x][y + dir.y].complete = @turn
       complete = true
+    else if @squares[x + dir.x]?[y + dir.y]?.toComplete()? ? false
+      @threeSquares.push {x: x + dir.x, y: y + dir.y}
+
+    @threeSquares = @threeSquares.filter (coord) => @squares[coord.x][coord.y].complete < 0
 
     # Test to see if we are done
     @done = true
@@ -193,6 +206,9 @@ class Board
 
     clone.remainingMoves = @remainingMoves
     clone.turn = @turn
+    clone.scores[0] = @scores[0]
+    clone.scores[1] = @scores[1]
+    clone.threeSquares = (coord for coord in @threeSquares)
 
     return clone
 
@@ -210,6 +226,7 @@ class Board
           if square[dir] < 0 and @squares[coord.x + m.x]?[coord.y + m.y]?.remnant?() isnt 2
             moves.push new Move coord.x, coord.y, dir
       return true
+    moves = moves.sort((a, b) -> Math.random() - 0.5)[0...MAX_EXAMINATIONS]
     return moves
 
   getNextStates: ->
@@ -226,10 +243,17 @@ class Board
     until board.remainingMoves is 0
       board.place board.getRandomMove()
 
-    if debug
-      console.warn 'EVALUATION THAT YIELDED\n', board.render(), '\nIS\n', board.scores[player]
+    return if (board.scores[player]) > (@w * @h / 2) then 1 else 0
 
-    return board.scores[player]
+  getBestTwoSquare: ->
+    # Third, reduce damage as much as possible.
+    bestDamage = Infinity; bestMove = null
+    @eachSquare (square, coord) =>
+      if square.remnant() is 2 and (damage = @computeDamage(coord)) < bestDamage
+        bestMove = new Move coord.x, coord.y, square.remaining()[0]
+        bestDamage = damage
+      return true
+    return bestMove
 
   # `getRandomMove` gets a random legal `Move` object for
   # this board. Just keeps generating random moves until
@@ -238,17 +262,9 @@ class Board
     # First, check to see if there are any uncompleted three-squares
     madeMove = false; move = null
 
-    @eachSquare (square, coord) =>
-      unless madeMove
-        remnant = square.toComplete()
-        if remnant?
-          move = new Move coord.x, coord.y, remnant
-          madeMove = true
-          return false
-      return true
-
-    if madeMove
-      return move
+    if @threeSquares.length > 0
+      c = @threeSquares.shift()
+      return new Move c.x, c.y, @squares[c.x][c.y].toComplete()
 
     # Second, check to see if there are any places we can put something
     # without making a three-square.
@@ -264,14 +280,7 @@ class Board
     if moves.length > 0
       return rand moves
 
-    # Third, reduce damage as much as possible.
-    bestDamage = Infinity; bestMove = null
-    @eachSquare (square, coord) =>
-      if square.remnant() is 2 and (damage = @computeDamage(coord)) < bestDamage
-        bestMove = new Move coord.x, coord.y, square.remaining()[0]
-        bestDamage = damage
-      return true
-    return bestMove
+    return @getBestTwoSquare()
 
   equal: (other) ->
     result = true
@@ -281,6 +290,22 @@ class Board
       return result and= square.equal other.squares[coord.x][coord.y]
 
     return result
+
+  impossibleMoves: ->
+    moves = []
+    @eachSquare (square, coord) =>
+      if square.remnant() is 2
+        for dir in DIRS
+          if square[dir] < 0
+            moves.push new Move coord.x, coord.y, dir
+      return true
+    return moves
+
+  getMetaRandomMove: (depth, player = PLAYER_NUM) ->
+    if @possibleMoves().length is 0 and @evaluate(player) is 0
+      return @getBestTwoSquare()
+    else
+      return @getRandomMove()
 
   getSearchMove: (depth) ->
     finalStates = []
@@ -295,12 +320,19 @@ class Board
 
     bestEval = 0; bestMove = null
     for state in states
-      for [1..3]
-        evaluation += state.board.evaluate state.board.turn
+      evaluation = 0
+      for [1..Math.ceil(MAX_NUM_EVALS / Math.ceil(possibleMoves.length / 10))]
+        evaluation += state.board.evaluate PLAYER_NUM
+      if evaluation is Math.ceil(MAX_NUM_EVALS / Math.ceil(possibleMoves.length / 10))
+        return state.move
       if evaluation > bestEval
         bestMove = state.move
+        bestEval = evaluation
 
-    return bestMove
+    if bestMove?
+      return bestMove
+    else
+      return @getMetaRandomMove()
 
   render: ->
     strs = ('' for [0..2 * @h])
@@ -337,15 +369,23 @@ fillChars = ['#'.red, '#'.blue]
 
 gameBoard = new Board WIDTH, HEIGHT
 
+decidedPlayer = false
+
 while true
   # Read in the information the contest environment gives us and
   # apply it to the `Board` model.
   moves = (Move.fromString(str) for str in kbd.getLineSync().trim().split('|') when str.length > 1)
+
+  unless decidedPlayer
+    if moves.length is 0 then PLAYER_NUM = 0
+    else PLAYER_NUM = 1
+    decidedPlayer = true
+
   for move in moves
     gameBoard.place move
 
-  if gameBoard.remainingMoves > 20
-    console.log (move = gameBoard.getRandomMove()).toString()
+  if gameBoard.possibleMoves().length is 0
+    console.log (move = gameBoard.getMetaRandomMove()).toString()
   else
     console.log (move = gameBoard.getSearchMove()).toString()
 

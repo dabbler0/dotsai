@@ -12,8 +12,8 @@ readline = require 'readline'
 # `-h` or `--height` for board height (in squares, not dots)
 # `-w` or `--width` for board width (in squares, not dots)
 RATE = 500
-WIDTH = 10
-HEIGHT = 10
+WIDTH = 6
+HEIGHT = 6
 
 for arg, i in process.argv
   if arg in ['--rate', '-r'] and i < process.argv.length - 1
@@ -250,8 +250,14 @@ playGame = (a, b, board) ->
     # know everything
     fodder = (if board.turn is lastTurn then [] else lastMoves)
 
+    killTimer = setTimeout (=>
+      console.log "Player #{board.turn} forfeits by timeout."
+      process.exit 1
+    ), 3000
+
     # Ask the player for a move
     players[board.turn].feed board, fodder, (move) ->
+      clearTimeout killTimer
       # If the turn has just switched, clear the `lastMove` history
       if lastTurn isnt board.turn
         lastTurn = board.turn; lastMoves = []
@@ -300,8 +306,14 @@ exports.play = (a, b, board, cb) ->
     # know everything
     fodder = (if board.turn is lastTurn then [] else lastMoves)
 
+    killTimer = setTimeout (=>
+      console.log "Player #{board.turn} forfeits by timeout."
+      process.exit 1
+    ), 3000
+
     # Ask the player for a move
     players[board.turn].feed board, fodder, (move) ->
+      clearTimeout killTimer
       # If the turn has just switched, clear the `lastMove` history
       if lastTurn isnt board.turn
         lastTurn = board.turn; lastMoves = []
