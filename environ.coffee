@@ -127,7 +127,10 @@ class Player
       @process.stdout.once 'data', fn = (data) =>
         str += data.toString()
         if str[str.length - 1] is '\n'
-          cb Move.fromString str
+          if str.match(/\d* \d* (n|s|e|w)\n/)?
+            cb null, Move.fromString str
+          else
+            cb str, null
         else
           @process.stdout.once 'data', fn
 
@@ -138,15 +141,20 @@ class Player
 exports.Board = class Board
   constructor: (@w, @h) ->
     @squares = ((new Square() for [0...@h]) for [0...@w]) # Array of all the `Square`s on the board
+    @moves = []
     @scores = [0, 0] # Player scores
     @turn = 0 # Whose turn; an index in the @scores array
     @done = false # Hacky field to prevent more moves after the game is over
 
   place: (move) ->
+    @moves.push move.toString()
+
     # Extract x, y, and d from the move
     {x, y, d} = move
 
     # If the move is illegal, say so
+    if (not @squares[x]?[y]?)
+      throw new Error "Player #{@turn} forfeits; out-of-bounds at #{x} #{y} #{d}"
     if @squares[x][y][d] >= 0
       throw new Error "Player #{@turn} forfeits; illegal move at #{x} #{y} #{d}"
 
@@ -250,14 +258,16 @@ playGame = (a, b, board) ->
     # know everything
     fodder = (if board.turn is lastTurn then [] else lastMoves)
 
-    killTimer = setTimeout (=>
-      console.log "Player #{board.turn} forfeits by timeout."
-      process.exit 1
-    ), 3000
+    #killTimer = setTimeout (=>
+    #  console.log "Player #{board.turn} forfeits by timeout."
+    #  process.exit 1
+    #), 3000
 
     # Ask the player for a move
-    players[board.turn].feed board, fodder, (move) ->
-      clearTimeout killTimer
+    players[board.turn].feed board, fodder, (err, move) ->
+      if err?
+        throw new Error 'Player ' + lastTurn + ' forefeits; invalid move syntax ' + err
+      #clearTimeout killTimer
       # If the turn has just switched, clear the `lastMove` history
       if lastTurn isnt board.turn
         lastTurn = board.turn; lastMoves = []
@@ -306,14 +316,16 @@ exports.play = (a, b, board, cb) ->
     # know everything
     fodder = (if board.turn is lastTurn then [] else lastMoves)
 
-    killTimer = setTimeout (=>
-      console.log "Player #{board.turn} forfeits by timeout."
-      process.exit 1
-    ), 3000
+    #killTimer = setTimeout (=>
+    #  console.log "Player #{board.turn} forfeits by timeout."
+    #  process.exit 1
+    #), 3000
 
     # Ask the player for a move
-    players[board.turn].feed board, fodder, (move) ->
-      clearTimeout killTimer
+    players[board.turn].feed board, fodder, (err, move) ->
+      if err?
+        throw new Error 'Player ' + lastTurn + ' forefeits; invalid move syntax'
+      #clearTimeout killTimer
       # If the turn has just switched, clear the `lastMove` history
       if lastTurn isnt board.turn
         lastTurn = board.turn; lastMoves = []
