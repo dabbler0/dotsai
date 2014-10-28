@@ -7,6 +7,8 @@ colors = require 'colors'
 child_process = require 'child_process'
 readline = require 'readline'
 
+TIME_LIMIT = 2000
+
 # Process command line arguments:
 # `-r` or `--rate` for frames-per-second frame rate
 # `-h` or `--height` for board height (in squares, not dots)
@@ -258,16 +260,16 @@ playGame = (a, b, board) ->
     # know everything
     fodder = (if board.turn is lastTurn then [] else lastMoves)
 
-    #killTimer = setTimeout (=>
-    #  console.log "Player #{board.turn} forfeits by timeout."
-    #  process.exit 1
-    #), 3000
+    killTimer = setTimeout (=>
+      console.log "Player #{board.turn} forfeits by timeout."
+      process.exit 1
+    ), TIME_LIMIT
 
     # Ask the player for a move
     players[board.turn].feed board, fodder, (err, move) ->
       if err?
         throw new Error 'Player ' + lastTurn + ' forefeits; invalid move syntax ' + err
-      #clearTimeout killTimer
+      clearTimeout killTimer
       # If the turn has just switched, clear the `lastMove` history
       if lastTurn isnt board.turn
         lastTurn = board.turn; lastMoves = []
@@ -316,16 +318,16 @@ exports.play = (a, b, board, cb) ->
     # know everything
     fodder = (if board.turn is lastTurn then [] else lastMoves)
 
-    #killTimer = setTimeout (=>
-    #  console.log "Player #{board.turn} forfeits by timeout."
-    #  process.exit 1
-    #), 3000
+    killTimer = setTimeout (=>
+      console.log "Player #{board.turn} forfeits by timeout."
+      process.exit 1
+    ), TIME_LIMIT
 
     # Ask the player for a move
     players[board.turn].feed board, fodder, (err, move) ->
       if err?
         throw new Error 'Player ' + lastTurn + ' forefeits; invalid move syntax'
-      #clearTimeout killTimer
+      clearTimeout killTimer
       # If the turn has just switched, clear the `lastMove` history
       if lastTurn isnt board.turn
         lastTurn = board.turn; lastMoves = []

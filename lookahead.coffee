@@ -185,6 +185,8 @@ class Board
       unless shouldCont then break
 
   computeDamage: (originalCoord) ->
+    coord = originalCoord
+    ###
     damage = 1; visited = {}
     for dir in @squares[originalCoord.x][originalCoord.y].remaining()
       coord = {x: originalCoord.x + dirs[dir].x, y: originalCoord.y + dirs[dir].y}
@@ -197,6 +199,10 @@ class Board
         square = @squares[coord.x]?[coord.y]
 
     return damage
+    ###
+    clone = @clone()
+    clone.place new Move coord.x, coord.y, @squares[coord.x][coord.y].remaining()[0]
+    return clone.getTotalThreeSquares()
 
   clone: ->
     clone = new Board @w, @h
@@ -220,10 +226,10 @@ class Board
   possibleMoves: ->
     moves = []
     @eachSquare (square, coord) =>
-      unless square.remnant() is 2
+      unless square.remnant() <= 2
         for dir in DIRS
           m = dirs[dir]
-          if square[dir] < 0 and @squares[coord.x + m.x]?[coord.y + m.y]?.remnant?() isnt 2
+          if square[dir] < 0 and @squares[coord.x + m.x]?[coord.y + m.y]?.remnant?() > 2
             moves.push new Move coord.x, coord.y, dir
       return true
     moves = moves.sort((a, b) -> Math.random() - 0.5)[0...MAX_EXAMINATIONS]
@@ -245,6 +251,30 @@ class Board
 
     return if (board.scores[player]) > (@w * @h / 2) then 1 else 0
 
+  metaEvaluate: (player, debug = false) ->
+    board = @clone()
+    start = new Date()
+
+    until board.remainingMoves is 0
+      board.place board.getMetaRandomMove()
+      if (new Date()) - start > 500
+        return 0
+
+    return if (board.scores[player]) > (@w * @h / 2) then 1 else 0
+
+  evaluateMove: (player, move) ->
+    clone = @clone()
+    clone.place move
+    return clone.metaEvaluate player
+
+  getTotalThreeSquares: ->
+    i = 0
+    while @threeSquares.length > 0
+      i++
+      coord = @threeSquares.pop()
+      @place new Move coord.x, coord.y, @squares[coord.x][coord.y].toComplete()
+    return i
+
   getBestTwoSquare: ->
     # Third, reduce damage as much as possible.
     bestDamage = Infinity; bestMove = null
@@ -255,15 +285,34 @@ class Board
       return true
     return bestMove
 
-  # `getRandomMove` gets a random legal `Move` object for
-  # this board. Just keeps generating random moves until
-  # one of them is legal.
+  computeThreeDamage: (originalCoord) ->
+    damage = 1; visited = {}
+    dir = @squares[originalCoord.x][originalCoord.y].toComplete()
+    coord = {x: originalCoord.x + dirs[dir].x, y: originalCoord.y + dirs[dir].y}
+    square = @squares[coord.x]?[coord.y]
+
+    while square? and ((coord.x + ',' + coord.y) not of visited) and (dir = square.toCompleteNot inverse[dir])?
+      damage += 1
+      visited[(coord.x + ',' + coord.y)] = true
+      coord.x += dirs[dir].x; coord.y += dirs[dir].y
+      square = @squares[coord.x]?[coord.y]
+
+  getDoubleCrosser: ->
+    if @threeSquares.length is 1 and @computeThreeDamage(@threeSquares[0]) <= 2
+      last = @threeSquares[0]
+      dir = dirs[@squares[last.x][last.y].toComplete()]
+      if @squares[last.x + dir.x]?[last.y + dir.y]?.remnant?() is 2
+        return new Move last.x + dir.x, last.y + dir.y, @squares[last.x + dir.x][last.y + dir.y].toCompleteNot(
+          inverse[@squares[last.x][last.y].toComplete()]
+        )
+    return null
+
   getRandomMove: ->
     # First, check to see if there are any uncompleted three-squares
     madeMove = false; move = null
 
     if @threeSquares.length > 0
-      c = @threeSquares.shift()
+      c = @threeSquares.pop()
       return new Move c.x, c.y, @squares[c.x][c.y].toComplete()
 
     # Second, check to see if there are any places we can put something
@@ -278,7 +327,11 @@ class Board
       return true
 
     if moves.length > 0
-      return rand moves
+      move = rand moves
+      start = (new Date())
+      until @evaluateMove(@turn, move) is 1 or (new Date() - start) > 500
+        move = rand moves
+      return move
 
     return @getBestTwoSquare()
 
@@ -301,38 +354,12 @@ class Board
       return true
     return moves
 
-  getMetaRandomMove: (depth, player = PLAYER_NUM) ->
-    if @possibleMoves().length is 0 and @evaluate(player) is 0
-      return @getBestTwoSquare()
+  getMetaRandomMove: ->
+    if @threeSquares.length is 1 and @computeThreeDamage(@threeSquares[0]) <= 2 and
+       @possibleMoves().length is 0 and @evaluate(@turn) is 0
+      return @getDoubleCrosser() ? @getBestTwoSquare() ? @getRandomMove()
     else
       return @getRandomMove()
-
-  getSearchMove: (depth) ->
-    finalStates = []
-    states = []
-
-    possibleMoves = @possibleMoves()
-    if possibleMoves.length is 0
-      return @getRandomMove()
-
-    for move in possibleMoves
-      states.push {move: move, board: @getStepWithMove(move)}
-
-    bestEval = 0; bestMove = null
-    for state in states
-      evaluation = 0
-      for [1..Math.ceil(MAX_NUM_EVALS / Math.ceil(possibleMoves.length / 10))]
-        evaluation += state.board.evaluate PLAYER_NUM
-      if evaluation is Math.ceil(MAX_NUM_EVALS / Math.ceil(possibleMoves.length / 10))
-        return state.move
-      if evaluation > bestEval
-        bestMove = state.move
-        bestEval = evaluation
-
-    if bestMove?
-      return bestMove
-    else
-      return @getMetaRandomMove()
 
   render: ->
     strs = ('' for [0..2 * @h])
@@ -384,9 +411,6 @@ while true
   for move in moves
     gameBoard.place move
 
-  if gameBoard.possibleMoves().length is 0
-    console.log (move = gameBoard.getMetaRandomMove()).toString()
-  else
-    console.log (move = gameBoard.getSearchMove()).toString()
+  console.log (move = gameBoard.getMetaRandomMove()).toString()
 
   gameBoard.place move

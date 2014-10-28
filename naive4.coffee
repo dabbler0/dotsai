@@ -185,8 +185,6 @@ class Board
       unless shouldCont then break
 
   computeDamage: (originalCoord) ->
-    coord = originalCoord
-    ###
     damage = 1; visited = {}
     for dir in @squares[originalCoord.x][originalCoord.y].remaining()
       coord = {x: originalCoord.x + dirs[dir].x, y: originalCoord.y + dirs[dir].y}
@@ -199,10 +197,6 @@ class Board
         square = @squares[coord.x]?[coord.y]
 
     return damage
-    ###
-    clone = @clone()
-    clone.place new Move coord.x, coord.y, @squares[coord.x][coord.y].remaining()[0]
-    return clone.getTotalThreeSquares()
 
   clone: ->
     clone = new Board @w, @h
@@ -226,10 +220,10 @@ class Board
   possibleMoves: ->
     moves = []
     @eachSquare (square, coord) =>
-      unless square.remnant() <= 2
+      unless square.remnant() is 2
         for dir in DIRS
           m = dirs[dir]
-          if square[dir] < 0 and @squares[coord.x + m.x]?[coord.y + m.y]?.remnant?() > 2
+          if square[dir] < 0 and @squares[coord.x + m.x]?[coord.y + m.y]?.remnant?() isnt 2
             moves.push new Move coord.x, coord.y, dir
       return true
     moves = moves.sort((a, b) -> Math.random() - 0.5)[0...MAX_EXAMINATIONS]
@@ -250,22 +244,6 @@ class Board
       board.place board.getRandomMove()
 
     return if (board.scores[player]) > (@w * @h / 2) then 1 else 0
-
-  metaEvaluate: (player, debug = false) ->
-    board = @clone()
-
-    until board.remainingMoves is 0
-      board.place board.getMetaRandomMove()
-
-    return if (board.scores[player]) > (@w * @h / 2) then 1 else 0
-
-  getTotalThreeSquares: ->
-    i = 0
-    while @threeSquares.length > 0
-      i++
-      coord = @threeSquares.pop()
-      @place new Move coord.x, coord.y, @squares[coord.x][coord.y].toComplete()
-    return i
 
   getBestTwoSquare: ->
     # Third, reduce damage as much as possible.
@@ -289,15 +267,7 @@ class Board
       coord.x += dirs[dir].x; coord.y += dirs[dir].y
       square = @squares[coord.x]?[coord.y]
 
-  getDoubleCrosser: ->
-    if @threeSquares.length is 1 and @computeThreeDamage(@threeSquares[0]) <= 2
-      last = @threeSquares[0]
-      dir = dirs[@squares[last.x][last.y].toComplete()]
-      if @squares[last.x + dir.x]?[last.y + dir.y]?.remnant?() is 2
-        return new Move last.x + dir.x, last.y + dir.y, @squares[last.x + dir.x][last.y + dir.y].toCompleteNot(
-          inverse[@squares[last.x][last.y].toComplete()]
-        )
-    return null
+    return damage
 
   getRandomMove: ->
     # First, check to see if there are any uncompleted three-squares
@@ -343,10 +313,11 @@ class Board
     return moves
 
   getMetaRandomMove: (depth) ->
-    if @threeSquares.length is 1 and @computeThreeDamage(@threeSquares[0]) <= 2 and
-       @possibleMoves().length is 0 and @evaluate(@turn) is 0
-      return @getDoubleCrosser() ? @getBestTwoSquare() ? @getRandomMove()
+    if @threeSquares.length is 1 and @possibleMoves().length is 0 and @evaluate(PLAYER_NUM) is 0
+      #console.warn '4.0: SWITCHING PARITY.'
+      return @getBestTwoSquare()
     else
+      #console.warn '4.0: NOT SWITCHING PARITY.', @threeSquares.length, @possibleMoves().length, @evaluate(PLAYER_NUM)
       return @getRandomMove()
 
   render: ->
