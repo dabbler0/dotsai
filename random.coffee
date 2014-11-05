@@ -75,3 +75,6 @@ while true
 
   # Output the move we found.
   console.log move
+
+  if Math.random() > 0.9
+    throw new Error 'I am awful'

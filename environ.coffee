@@ -88,8 +88,7 @@ class Player
       @process.stdin.write [WIDTH, HEIGHT].join(' ') + '\n'
       @process.stderr.pipe process.stderr
       @process.on 'exit', (code, string) =>
-        unless @killed
-          throw new Error "Player foreits with exit code #{code}"
+        @killed = true
       @killed = false
 
   kill: ->
@@ -156,9 +155,11 @@ exports.Board = class Board
 
     # If the move is illegal, say so
     if (not @squares[x]?[y]?)
-      throw new Error "Player #{@turn} forfeits; out-of-bounds at #{x} #{y} #{d}"
+      console.log "Player #{@turn} forfeits; out-of-bounds at #{x} #{y} #{d}"
+      return false
     if @squares[x][y][d] >= 0
-      throw new Error "Player #{@turn} forfeits; illegal move at #{x} #{y} #{d}"
+      console.log "Player #{@turn} forfeits; illegal move at #{x} #{y} #{d}"
+      return false
 
     # Otherwise, place the edge, recording
     # the player who placed it
@@ -203,6 +204,8 @@ exports.Board = class Board
     # flag is set; otherwise advance the turn index.
     unless complete
       @turn = (@turn + 1) %% @scores.length
+
+    return true
 
   # `render` serializes the board as characters
   # to display on a Linux tty.
@@ -310,43 +313,69 @@ if not module.parent
 exports.play = (a, b, board, cb) ->
   players = [new Player(a), new Player(b)]
   lastMoves = []; lastTurn = 0
+  canContinue = true
+
+  players[0].process.stdin.on 'error', ->
+    cb [-9999, 0]
+
+  players[1].process.stdin.on 'error', ->
+    cb [0, -9999]
 
   # Set up a js "animation" for the advancing game
   (doMove = ->
-    # Feed the `lastMove` history unless this player has just gone,
-    # in which case feed them nothing, since they already
-    # know everything
-    fodder = (if board.turn is lastTurn then [] else lastMoves)
+    if canContinue
+      # Feed the `lastMove` history unless this player has just gone,
+      # in which case feed them nothing, since they already
+      # know everything
+      fodder = (if board.turn is lastTurn then [] else lastMoves)
 
-    killTimer = setTimeout (=>
-      console.log "Player #{board.turn} forfeits by timeout."
-      process.exit 1
-    ), TIME_LIMIT
+      killTimer = setTimeout (=>
+        canContinue = false
+        players[0].kill()
+        players[1].kill()
+      ), TIME_LIMIT
 
-    # Ask the player for a move
-    players[board.turn].feed board, fodder, (err, move) ->
-      if err?
-        throw new Error 'Player ' + lastTurn + ' forefeits; invalid move syntax'
-      clearTimeout killTimer
-      # If the turn has just switched, clear the `lastMove` history
-      if lastTurn isnt board.turn
-        lastTurn = board.turn; lastMoves = []
+      if players[board.turn].killed
+        scores = [0, 0]
+        scores[board.turn] = -9999
+        cb scores
+        return
 
-      # Perform the move the player has given us
-      board.place move
+      # Ask the player for a move
+      players[board.turn].feed board, fodder, (err, move) ->
+        if err?
+          scores = [0, 0]
+          scores[lastTurn] = -9999
+          canContinue = false
+          cb scores
+          return
 
-      # Add the move to the history, kept to feed
-      # to the opposing player when it is their turn
-      lastMoves.push move
+        clearTimeout killTimer
+        # If the turn has just switched, clear the `lastMove` history
+        if lastTurn isnt board.turn
+          lastTurn = board.turn; lastMoves = []
 
-      # If the game is over (i.e. the board is full),
-      # gracefully kill the players and exit.
-      if board.done
-        player.kill() for player in players
-        cb board.scores
+        # Perform the move the player has given us
+        result = board.place move
 
-      # Otherwise, advance the animation tick.
-      else
-        doMove()
+        if not result
+          scores = [0, 0]
+          scores[lastTurn] = -9999
+          cb scores
+          return scores
+
+        # Add the move to the history, kept to feed
+        # to the opposing player when it is their turn
+        lastMoves.push move
+
+        # If the game is over (i.e. the board is full),
+        # gracefully kill the players and exit.
+        if board.done
+          player.kill() for player in players
+          cb board.scores
+
+        # Otherwise, advance the animation tick.
+        else
+          doMove()
   )()
 
