@@ -338,6 +338,7 @@ exports.play = (a, b, board, cb) ->
       if players[board.turn].killed
         scores = [0, 0]
         scores[board.turn] = -9999
+        players[1 - board.turn].kill()
         cb scores
         return
 
@@ -347,6 +348,7 @@ exports.play = (a, b, board, cb) ->
           scores = [0, 0]
           scores[lastTurn] = -9999
           canContinue = false
+          player.kill() for player in players
           cb scores
           return
 
